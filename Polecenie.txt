@@ -1,0 +1,23 @@
+Napisać w języku C program umożliwiający przeprowadzenie rozgrywki w kółko i krzyżyk
+• zakładamy, że program uruchamia się w dwóch oddzielnych konsolach jako dwa osobne procesy,
+umożliwiające grę dwóch użytkowników;
+• program wymaga podania jednego argumentu – nazwy, która zostanie użyta jako ostatni argument
+wywołania funkcji CreateFileMapping();
+• jeżeli blok pamięci o takiej nazwie nie istnieje, program tworzy go i uznaje, że jest instancją dla
+gracza grającego krzyżykiem; ten gracz wykonuje ruch jako pierwszy; w przeciwnym przypadku
+program dołącza się do już istniejącego bloku i staje się instancją gracza grającego kółkiem;
+• plansza gry przechowywana jest w pamięci współdzielonej; zadaniem autora jest stworzenie
+własnego mechanizmu synchronizującego posunięcia graczy; 
+• zakładamy, że gracz podaje swój ruch korzystając z numerów pól zakodowanych w poniższy
+sposób:
+ 1 | 2 | 3
+---+---+---
+ 4 | 5 | 6
+---+---+---
+ 7 | 8 | 9
+• wykonanie ruchu przez dowolnego z graczy powoduje odświeżenie planszy na ekranie i
+wyświetlenie albo zachęty do wykonania ruchu, albo komunikatu z prośbą o poczekanie na ruch
+konkurenta;
+• program dba o kontrolowania poprawności ruchów (nie pozwala postawić znaku na polu już
+zajętym) oraz wykrywa sytuację remisową i wygraną każdej ze stron; w obu tych przypadkach
+program kończy pracę i usuwa przydzieloną pamięć.
