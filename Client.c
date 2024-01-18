@@ -6,6 +6,9 @@
 #define BOARD_SIZE 9
 #define PLAYER_X 1
 #define PLAYER_O 2
+#define GAME_NOT_OVER 0
+#define GAME_OVER_WIN 1
+#define GAME_OVER_DRAW 2
 
 void printBoard(int* board) {
     printf(" %c | %c | %c\n", board[0] ? (board[0] == PLAYER_X ? 'X' : 'O') : '1',
@@ -48,14 +51,14 @@ int checkDraw(const int* board) {
     return 1;  // Board full, but no winner
 }
 
-void GameLoopX(int* pData, HANDLE hMutex) {
-    while (1) {
+void GameLoopX(int* pData, HANDLE hMutex, int* pGameEnd) {
+    while (*pGameEnd == GAME_NOT_OVER) {
         int currentPlayer = pData[BOARD_SIZE];
 
         if (currentPlayer == PLAYER_X) {
             WaitForSingleObject(hMutex, INFINITE);
             pData[BOARD_SIZE + 3] = 1; // Set semaphore for PLAYER_X
-			printBoard(pData);
+            printBoard(pData);
             printf("Player X, enter your move (1-9): ");
             ReleaseMutex(hMutex);
 
@@ -72,17 +75,20 @@ void GameLoopX(int* pData, HANDLE hMutex) {
 
             pData[move - 1] = currentPlayer;
             pData[BOARD_SIZE + 1] = move; // Przekazanie numeru ruchu
-            pData[BOARD_SIZE + 2] = 1; // Informacja, że ruch jest gotowy
+            pData[BOARD_SIZE + 2] = 1;    // Informacja, że ruch jest gotowy
             ReleaseMutex(hMutex);
 
             // Check for a win or draw
             if (checkWin(pData, currentPlayer)) {
                 printBoard(pData);
                 printf("Player %c wins!\n", currentPlayer == PLAYER_X ? 'X' : 'O');
+                *pGameEnd = GAME_OVER_WIN; // Informacja o zwycięstwie
                 break;
-            } else if (checkDraw(pData)) {
+            }
+            else if (checkDraw(pData)) {
                 printBoard(pData);
                 printf("It's a draw!\n");
+                *pGameEnd = GAME_OVER_DRAW; // Informacja o remisie
                 break;
             }
 
@@ -91,23 +97,23 @@ void GameLoopX(int* pData, HANDLE hMutex) {
 
             // Allow the other player to display messages
             pData[BOARD_SIZE + 4] = 1;
-			
+
             // Display the updated board
             printBoard(pData);
-			printf("Waiting for Player's O move...\n");
-			printf("\n");
+            printf("Waiting for Player O's move...\n");
+            printf("\n");
         }
     }
 }
 
-void GameLoopO(int* pData, HANDLE hMutex) {
-    while (1) {
+void GameLoopO(int* pData, HANDLE hMutex, int* pGameEnd) {
+    while (*pGameEnd == GAME_NOT_OVER) {
         int currentPlayer = pData[BOARD_SIZE];
 
         if (currentPlayer == PLAYER_O) {
             WaitForSingleObject(hMutex, INFINITE);
             pData[BOARD_SIZE + 4] = 1; // Set semaphore for PLAYER_O
-			printBoard(pData);
+            printBoard(pData);
             printf("Player O, enter your move (1-9): ");
             ReleaseMutex(hMutex);
 
@@ -124,17 +130,20 @@ void GameLoopO(int* pData, HANDLE hMutex) {
 
             pData[move - 1] = currentPlayer;
             pData[BOARD_SIZE + 1] = move; // Przekazanie numeru ruchu
-            pData[BOARD_SIZE + 2] = 1; // Informacja, że ruch jest gotowy
+            pData[BOARD_SIZE + 2] = 1;    // Informacja, że ruch jest gotowy
             ReleaseMutex(hMutex);
 
             // Check for a win or draw
             if (checkWin(pData, currentPlayer)) {
                 printBoard(pData);
                 printf("Player %c wins!\n", currentPlayer == PLAYER_X ? 'X' : 'O');
+                *pGameEnd = GAME_OVER_WIN; // Informacja o zwycięstwie
                 break;
-            } else if (checkDraw(pData)) {
+            }
+            else if (checkDraw(pData)) {
                 printBoard(pData);
                 printf("It's a draw!\n");
+                *pGameEnd = GAME_OVER_DRAW; // Informacja o remisie
                 break;
             }
 
@@ -146,12 +155,11 @@ void GameLoopO(int* pData, HANDLE hMutex) {
 
             // Display the updated board
             printBoard(pData);
-			printf("Waiting for Player's X move...\n");
-			printf("\n");
+            printf("Waiting for Player X's move...\n");
+            printf("\n");
         }
     }
 }
-
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
@@ -185,18 +193,19 @@ int main(int argc, char* argv[]) {
 
                 printf("You are the X (cross)!\n");
 
-                pData[BOARD_SIZE] = 1; // currentPlayer (1 for X, 2 for O)
-                pData[BOARD_SIZE + 1] = 0; // signal for a new move
-                pData[BOARD_SIZE + 2] = 0; // signal to control access to the display
-                pData[BOARD_SIZE + 3] = 0; // signal for PLAYER_X to display message
-                pData[BOARD_SIZE + 4] = 0; // signal for PLAYER_O to display message
+                pData[BOARD_SIZE] = 1;              // currentPlayer (1 for X, 2 for O)
+                pData[BOARD_SIZE + 1] = 0;          // signal for a new move
+                pData[BOARD_SIZE + 2] = 0;          // signal to control access to the display
+                pData[BOARD_SIZE + 3] = 0;          // signal for PLAYER_X to display message
+                pData[BOARD_SIZE + 4] = 0;          // signal for PLAYER_O to display message
+                int gameEnd = GAME_NOT_OVER; // Informacja o stanie gry (niezakończona, wygrana, remis)
                 HANDLE hMutex = CreateMutex(NULL, FALSE, NULL);
 
                 // Game loop (Player X)
-        		GameLoopX(pData, hMutex);
+                GameLoopX(pData, hMutex, &gameEnd);
 
-		        // Game loop (Player O)
-		        GameLoopO(pData, hMutex);
+                // Game loop (Player O)
+                GameLoopO(pData, hMutex, &gameEnd);
 
                 // Clean up
                 UnmapViewOfFile(pData);
@@ -218,20 +227,20 @@ int main(int argc, char* argv[]) {
                 if (pData[BOARD_SIZE + 1] == 0) {
                     break;
                 }
-
                 Sleep(1000); // Sleep for 1 second
             }
 
             printf("Both players have joined. Starting the TicTacToe game...\n\n");
 
             printf("You are the O (circle)!\n");
+            int gameEnd = GAME_NOT_OVER; // Informacja o stanie gry (niezakończona, wygrana, remis)
             HANDLE hMutex = CreateMutex(NULL, FALSE, NULL);
 
             // Game loop (Player O)
-        	GameLoopO(pData, hMutex);
+            GameLoopO(pData, hMutex, &gameEnd);
 
-        	// Game loop (Player X)
-        	GameLoopX(pData, hMutex);
+            // Game loop (Player X)
+            GameLoopX(pData, hMutex, &gameEnd);
 
             // Clean up
             UnmapViewOfFile(pData);
