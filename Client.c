@@ -1,5 +1,3 @@
-//tworze dwa pliki: Client1 i Client2, buduje przy pomocy gcc i uruchamiam z parametrem, np. game
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +22,7 @@ void printBoard(int* board) {
 }
 
 int checkWin(const int* board, int player) {
-    // Check rows, columns, and diagonals
+    // Check rows, columns
     for (int i = 0; i < 3; ++i) {
         if ((board[i] == player && board[i + 3] == player && board[i + 6] == player) ||  // Check columns
             (board[i * 3] == player && board[i * 3 + 1] == player && board[i * 3 + 2] == player)) {  // Check rows
@@ -50,6 +48,111 @@ int checkDraw(const int* board) {
     return 1;  // Board full, but no winner
 }
 
+void GameLoopX(int* pData, HANDLE hMutex) {
+    while (1) {
+        int currentPlayer = pData[BOARD_SIZE];
+
+        if (currentPlayer == PLAYER_X) {
+            WaitForSingleObject(hMutex, INFINITE);
+            pData[BOARD_SIZE + 3] = 1; // Set semaphore for PLAYER_X
+			printBoard(pData);
+            printf("Player X, enter your move (1-9): ");
+            ReleaseMutex(hMutex);
+
+            // Wait for input
+            int move;
+            scanf("%d", &move);
+
+            WaitForSingleObject(hMutex, INFINITE);
+            if (move < 1 || move > 9 || pData[move - 1] != 0) {
+                printf("Invalid move. Try again.\n");
+                ReleaseMutex(hMutex);
+                continue;
+            }
+
+            pData[move - 1] = currentPlayer;
+            pData[BOARD_SIZE + 1] = move; // Przekazanie numeru ruchu
+            pData[BOARD_SIZE + 2] = 1; // Informacja, że ruch jest gotowy
+            ReleaseMutex(hMutex);
+
+            // Check for a win or draw
+            if (checkWin(pData, currentPlayer)) {
+                printBoard(pData);
+                printf("Player %c wins!\n", currentPlayer == PLAYER_X ? 'X' : 'O');
+                break;
+            } else if (checkDraw(pData)) {
+                printBoard(pData);
+                printf("It's a draw!\n");
+                break;
+            }
+
+            // Switch to the other player
+            pData[BOARD_SIZE] = PLAYER_O;
+
+            // Allow the other player to display messages
+            pData[BOARD_SIZE + 4] = 1;
+			
+            // Display the updated board
+            printBoard(pData);
+			printf("Waiting for Player's O move...\n");
+			printf("\n");
+        }
+    }
+}
+
+void GameLoopO(int* pData, HANDLE hMutex) {
+    while (1) {
+        int currentPlayer = pData[BOARD_SIZE];
+
+        if (currentPlayer == PLAYER_O) {
+            WaitForSingleObject(hMutex, INFINITE);
+            pData[BOARD_SIZE + 4] = 1; // Set semaphore for PLAYER_O
+			printBoard(pData);
+            printf("Player O, enter your move (1-9): ");
+            ReleaseMutex(hMutex);
+
+            // Wait for input
+            int move;
+            scanf("%d", &move);
+
+            WaitForSingleObject(hMutex, INFINITE);
+            if (move < 1 || move > 9 || pData[move - 1] != 0) {
+                printf("Invalid move. Try again.\n");
+                ReleaseMutex(hMutex);
+                continue;
+            }
+
+            pData[move - 1] = currentPlayer;
+            pData[BOARD_SIZE + 1] = move; // Przekazanie numeru ruchu
+            pData[BOARD_SIZE + 2] = 1; // Informacja, że ruch jest gotowy
+            ReleaseMutex(hMutex);
+
+            // Check for a win or draw
+            if (checkWin(pData, currentPlayer)) {
+                printBoard(pData);
+                printf("Player %c wins!\n", currentPlayer == PLAYER_X ? 'X' : 'O');
+                break;
+            } else if (checkDraw(pData)) {
+                printBoard(pData);
+                printf("It's a draw!\n");
+                break;
+            }
+
+            // Switch to the other player
+            pData[BOARD_SIZE] = PLAYER_X;
+
+            // Allow the other player to display messages
+            pData[BOARD_SIZE + 3] = 1;
+
+            // Display the updated board
+            printBoard(pData);
+			printf("Waiting for Player's X move...\n");
+			printf("\n");
+        }
+    }
+}
+
+
 int main(int argc, char* argv[]) {
     if (argc != 2) {
         printf("Proper usage: %s <file_mapping_name>\n", argv[0]);
@@ -61,10 +164,10 @@ int main(int argc, char* argv[]) {
     if (hFileMapping == NULL) {
         // If the shared memory with exact <file_mapping_name> does not exist, create it (you are the cross).
         hFileMapping = CreateFileMapping(
-            INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(int) * (BOARD_SIZE + 4), argv[1]);
+            INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(int) * (BOARD_SIZE + 5), argv[1]);
 
         if (hFileMapping != NULL) {
-            int* pData = (int*)MapViewOfFile(hFileMapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(int) * (BOARD_SIZE + 4));
+            int* pData = (int*)MapViewOfFile(hFileMapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(int) * (BOARD_SIZE + 5));
 
             if (pData != NULL) {
                 printf("Successfully created shared memory: %s\n", argv[1]);
@@ -78,84 +181,31 @@ int main(int argc, char* argv[]) {
                     Sleep(1000); // Sleep for 1 second
                 }
 
-                printf("Both players have joined. Starting the game...\n");
+                printf("Both players have joined. Starting the TicTacToe game...\n\n");
 
                 printf("You are the X (cross)!\n");
-                printBoard(pData);
 
                 pData[BOARD_SIZE] = 1; // currentPlayer (1 for X, 2 for O)
-				pData[BOARD_SIZE + 1] = 0; // signal for a new move
-				pData[BOARD_SIZE + 2] = 0; // semaphore to control access to the display
-				pData[BOARD_SIZE + 3] = 0; // semaphore for PLAYER_X to display message
-				pData[BOARD_SIZE + 4] = 0; // semaphore for PLAYER_O to display message
-
+                pData[BOARD_SIZE + 1] = 0; // signal for a new move
+                pData[BOARD_SIZE + 2] = 0; // signal to control access to the display
+                pData[BOARD_SIZE + 3] = 0; // signal for PLAYER_X to display message
+                pData[BOARD_SIZE + 4] = 0; // signal for PLAYER_O to display message
+                HANDLE hMutex = CreateMutex(NULL, FALSE, NULL);
 
                 // Game loop (Player X)
-				while (1) {
-				    int currentPlayer = pData[BOARD_SIZE];
-				    
-				    if (currentPlayer == PLAYER_X) {
-				        pData[BOARD_SIZE + 3] = 1; // Set semaphore for PLAYER_X
-				        printf("Player X, enter your move (1-9): ");
-				    } else {
-				        while (pData[BOARD_SIZE + 4] == 1) {
-				            Sleep(1000); // Sleep for 1 second
-				        }
-				        pData[BOARD_SIZE + 4] = 0; // Reset semaphore for PLAYER_O
-				        printf("Waiting for Player O to move...\n");
-				    }
-				
-				    // Wait for input
-				    int move;
-				    scanf("%d", &move);
-				
-				    if (move < 1 || move > 9 || pData[move - 1] != 0) {
-				        printf("Invalid move. Try again.\n");
-				        continue;
-				    }
-				
-				    pData[move - 1] = currentPlayer;
-				
-				    // Check for a win or draw
-				    if (checkWin(pData, currentPlayer)) {
-						printBoard(pData);
-				        printf("Player %c wins!\n", currentPlayer == PLAYER_X ? 'X' : 'O');
-				        break;
-				    } else if (checkDraw(pData)) {
-						printBoard(pData);
-				        printf("It's a draw!\n");
-				        break;
-				    }
-				
-				    // Switch to the other player
-				    pData[BOARD_SIZE] = (currentPlayer == PLAYER_X) ? PLAYER_O : PLAYER_X;
-				
-				    // Allow the other player to display messages
-				    pData[BOARD_SIZE + 2] = (pData[BOARD_SIZE] == PLAYER_X) ? 1 : 0;
-				
-				    // Display the updated board
-				    printBoard(pData);
-				
-				    // Signal that the move has been made
-				    pData[BOARD_SIZE + 1] = 1;
-				    pData[BOARD_SIZE + 3] = 0; // Reset semaphore for PLAYER_X
-				}
+        		GameLoopX(pData, hMutex);
 
+		        // Game loop (Player O)
+		        GameLoopO(pData, hMutex);
 
                 // Clean up
                 UnmapViewOfFile(pData);
                 CloseHandle(hFileMapping);
-            } else {
-                printf("Error: Could not map view of the file.\n");
-                CloseHandle(hFileMapping);
-                return 1;
+                CloseHandle(hMutex);
             }
-        } else {
-            printf("Error: Could not create shared memory.\n");
-            return 1;
         }
     } else {
-        int* pData = (int*)MapViewOfFile(hFileMapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(int) * (BOARD_SIZE + 4));
+        int* pData = (int*)MapViewOfFile(hFileMapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(int) * (BOARD_SIZE + 5));
 
         if (pData != NULL) {
             // If shared memory with exact <file_mapping_name> exists, then join it (you are the circle).
@@ -172,72 +222,21 @@ int main(int argc, char* argv[]) {
                 Sleep(1000); // Sleep for 1 second
             }
 
-            printf("Both players have joined. Starting the TicTacToe game...\n");
+            printf("Both players have joined. Starting the TicTacToe game...\n\n");
 
             printf("You are the O (circle)!\n");
-            printBoard(pData);
-			
-			// -------------- Do poprawy --------------
-            // Game loop (Player O)
-			while (1) {
-			    int currentPlayer = pData[BOARD_SIZE];
-			    
-			    if (currentPlayer == PLAYER_O) {
-			        pData[BOARD_SIZE + 4] = 1; // Set semaphore for PLAYER_O
-			        printf("Player O, enter your move (1-9): ");
-			    } else {
-			        while (pData[BOARD_SIZE + 3] == 1) {
-			            Sleep(1000); // Sleep for 1 second
-			        }
-			        pData[BOARD_SIZE + 3] = 0; // Reset semaphore for PLAYER_X
-			        printf("Waiting for Player X to move...\n");
-			    }
+            HANDLE hMutex = CreateMutex(NULL, FALSE, NULL);
 
-			
-			    // Wait for input
-			    int move;
-			    scanf("%d", &move);
-			
-			    if (move < 1 || move > 9 || pData[move - 1] != 0) {
-			        printf("Invalid move. Try again.\n");
-			        continue;
-			    }
-			
-			    pData[move - 1] = currentPlayer;
-			
-			    // Check for a win or draw
-			    if (checkWin(pData, currentPlayer)) {
-					printBoard(pData);
-			        printf("Player %c wins!\n", currentPlayer == PLAYER_O ? 'X' : 'O');
-			        break;
-			    } else if (checkDraw(pData)) {
-					printBoard(pData);
-			        printf("It's a draw!\n");
-			        break;
-			    }
-			
-			    // Switch to the other player
-			    pData[BOARD_SIZE] = (currentPlayer == PLAYER_X) ? PLAYER_O : PLAYER_X;
-			
-			    // Allow the other player to display messages
-			    pData[BOARD_SIZE + 2] = (pData[BOARD_SIZE] == PLAYER_X) ? 1 : 0;
-			
-			    // Display the updated board
-			    printBoard(pData);
-			
-			    // Signal that the move has been made
-			    pData[BOARD_SIZE + 1] = 1;
-			    pData[BOARD_SIZE + 3] = 0; // Reset semaphore for PLAYER_O
-			}
-			// -------------- Do poprawy --------------
+            // Game loop (Player O)
+        	GameLoopO(pData, hMutex);
+
+        	// Game loop (Player X)
+        	GameLoopX(pData, hMutex);
 
             // Clean up
             UnmapViewOfFile(pData);
             CloseHandle(hFileMapping);
-        } else {
-            printf("Error: Could not map view of the file.\n");
-            CloseHandle(hFileMapping);
-            return 1;
+            CloseHandle(hMutex);
         }
     }
 
